@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>You're Invited!</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f4f1ff; color: #2b2540; }
+    .hero { background: linear-gradient(135deg, #6c4df6, #b05cf0); color: #fff; text-align: center; padding: 56px 20px; }
+    .hero h1 { margin: 0 0 8px; font-size: 2.4rem; }
+    .hero p { margin: 4px 0; font-size: 1.1rem; }
+    main { max-width: 560px; margin: -28px auto 40px; padding: 0 16px; }
+    .card { background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 4px 18px rgba(60,40,120,.12); margin-bottom: 20px; }
+    h2 { margin-top: 0; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #cfc8ee; border-radius: 8px; font: inherit; }
+    textarea { min-height: 80px; resize: vertical; }
+    button { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #6c4df6; color: #fff; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .link { background: none; color: #6c4df6; width: auto; padding: 0; margin: 6px 0 0; text-decoration: underline; font-size: .9rem; }
+    .msg { margin-top: 14px; padding: 10px; border-radius: 8px; display: none; }
+    .msg.ok { display: block; background: #e6f7ea; color: #1b6b32; }
+    .msg.info { display: block; background: #eaf0ff; color: #274a9a; }
+    .msg.err { display: block; background: #fdeaea; color: #a12626; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <h1 id="eventTitle">Birthday Party</h1>
+    <p id="eventDate">Saturday, 15 November 2026 · 6:00 PM</p>
+    <p id="eventPlace">123 Example Street, Your City</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>About</h2>
+      <p>Join us for an evening of food, music and fun. We'd love to have you there — please let us know if you can make it!</p>
+    </section>
+
+    <section class="card">
+      <h2>RSVP / Inquiry</h2>
+      <form id="rsvpForm">
+        <label for="email">Email</label>
+        <input id="email" type="email" required placeholder="you@example.com">
+        <button type="button" class="link" id="lookupBtn">Already responded? Load my response</button>
+
+        <label for="name">Name</label>
+        <input id="name" type="text" required placeholder="Your full name">
+
+        <label for="attending">Will you attend?</label>
+        <select id="attending" required>
+          <option value="Yes">Yes, I'll be there</option>
+          <option value="No">Sorry, I can't make it</option>
+          <option value="Maybe">Maybe</option>
+        </select>
+
+        <label for="guests">Number of guests (including you)</label>
+        <input id="guests" type="number" min="1" max="20" value="1">
+
+        <label for="message">Message / question (optional)</label>
+        <textarea id="message" placeholder="Any message or question for the host"></textarea>
+
+        <button type="submit" id="submitBtn">Send RSVP</button>
+        <div id="status" class="msg"></div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    // 1) Paste your Google Apps Script Web App URL here (see README.md)
+    const SCRIPT_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
+
+    const $ = id => document.getElementById(id);
+    const form = $("rsvpForm"), statusBox = $("status"), submitBtn = $("submitBtn");
+    let existing = false;
+
+    function show(text, type) { statusBox.textContent = text; statusBox.className = "msg " + type; }
+
+    function fill(data) {
+      $("name").value = data.name || "";
+      $("attending").value = data.attending || "Yes";
+      $("guests").value = data.guests || 1;
+      $("message").value = data.message || "";
+    }
+
+    async function lookup() {
+      const email = $("email").value.trim();
+      if (!email) return show("Enter your email first.", "err");
+      if (SCRIPT_URL.startsWith("PASTE")) return show("Site not configured yet (missing SCRIPT_URL).", "err");
+      show("Looking up your response…", "info");
+      try {
+        const res = await fetch(SCRIPT_URL + "?email=" + encodeURIComponent(email));
+        const data = await res.json();
+        if (data.found) {
+          fill(data); existing = true;
+          submitBtn.textContent = "Update my RSVP";
+          show("We found your earlier response. Change anything and press Update.", "info");
+        } else {
+          existing = false;
+          submitBtn.textContent = "Send RSVP";
+          show("No earlier response found for this email.", "info");
+        }
+      } catch (e) { show("Could not reach the server. Please try again.", "err"); }
+    }
+
+    $("lookupBtn").addEventListener("click", lookup);
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      if (SCRIPT_URL.startsWith("PASTE")) return show("Site not configured yet (missing SCRIPT_URL).", "err");
+      submitBtn.disabled = true;
+      show("Sending…", "info");
+      const payload = {
+        email: $("email").value.trim(),
+        name: $("name").value.trim(),
+        attending: $("attending").value,
+        guests: $("guests").value,
+        message: $("message").value.trim()
+      };
+      try {
+        // text/plain avoids a CORS preflight, which Apps Script doesn't support
+        const res = await fetch(SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        existing = true;
+        submitBtn.textContent = "Update my RSVP";
+        show(data.updated ? "Your RSVP has been updated. Thank you!" : "Thanks! Your RSVP has been received. You can come back any time to change it using the same email.", "ok");
+      } catch (err) { show("Something went wrong. Please try again.", "err"); }
+      submitBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>
